@@ -1,0 +1,553 @@
+# Checkpoint 4: Containers em Nuvem (ACR/ACI)
+
+> Sistema de gestão veterinária centralizada para acompanhamento contínuo da 
+> saúde de animais, com API REST em Java Spring Boot e banco de dados Oracle,
+> containerizado na Azure.
+
+---
+
+## Índice
+
+- [Sobre o Projeto](#sobre-o-projeto)
+- [Arquitetura](#arquitetura)
+- [Repositórios do Projeto](#repositórios-do-projeto)
+- [Pré-requisitos](#pré-requisitos)
+- [Instalação (How-To)](#instalação-how-to)
+- [Testando o CRUD](#testando-o-crud)
+- [Segurança](#segurança)
+- [Equipe](#equipe)
+
+---
+
+## Sobre o Projeto
+O objetivo da Clyvo é acompanhar a jornada contínua de saúde de animais, centralizando em um único lugar tudo o que um veterinário e uma clínica precisam no dia a dia: consultas, histórico, carteira de vacinação, responsável e localização. 
+
+Nesta entrega do Checkpoint 4, a aplicação API Java/Spring Boot e o banco de dados Oracle foram totalmente containerizados e implantados na nuvem Azure, utilizando **Azure Container Registry (ACR)** para armazenar as imagens Docker, **Azure Container Instance (ACI)** para executar os containers, **Azure File Storage** para persistência dos dados e **Azure Key Vault** para a segurança das credenciais.
+
+## Arquitetura
+
+- **Opção escolhida:** ACR + ACI
+- **Banco de dados:** Oracle Database XE (`gvenzl/oracle-xe`)
+- **API:** Java / Spring Boot
+- **Armazenamento persistente:** Azure Files (montado no container do banco)
+- **Segurança:** Credenciais armazenadas no Azure Key Vault (nenhuma senha exposta no código-fonte)
+
+## Repositórios do Projeto
+
+| Repositório | Conteúdo |
+|---|---|
+| [`cp4-devops-banco`](https://github.com/lianalyumi/cp4-devops-banco) | Dockerfile e scripts de inicialização do banco Oracle (DDL + dados) |
+| [`Clyvo-JavaAdvanced`](https://github.com/Eduardo-Locaspi/Clyvo-JavaAdvanced) | Código-fonte da API Java/Spring Boot + Dockerfile |
+| [`cp4-devops`](https://github.com/lianalyumi/cp4-devops) | Scripts de criação da VM e deploy dos recursos na Azure |
+
+## Pré-requisitos
+
+- Conta ativa no Microsoft Azure
+- Acesso ao Azure Cloud Shell
+
+---
+
+## Instalação (How-To)
+
+### 1. Clonar o repositório de scripts (no Cloud Shell)
+
+`git clone` — baixa o repositório `cp4-devops.git` para o Cloud Shell, trazendo `create-vm-linux.sh`, `tools-vm-linux.sh` e os 4 scripts de deploy (`01` a `04`)
+```bash
+git clone https://github.com/lianalyumi/cp4-devops.git
+```
+
+`cd` — entra na pasta recém-clonada, de onde os próximos comandos serão executados
+```bash
+cd cp4-devops.git
+```
+
+### 2. Criar a VM de trabalho (no Cloud Shell)
+
+`chmod +x` — concede permissão de execução ao script `create-vm-linux.sh`
+```bash
+chmod +x create-vm-linux.sh
+```
+
+`./create-vm-linux.sh` — executa o script, que cria o Resource Group, a VM Linux (AlmaLinux), a rede virtual, o IP público e as regras de firewall necessárias
+```bash
+./create-vm-linux.sh
+```
+
+### 3. Instalar as ferramentas na VM (no Cloud Shell)
+
+`chmod +x` — concede permissão de execução ao script `tools-vm-linux.sh`
+```bash
+chmod +x tools-vm-linux.sh
+```
+
+`./tools-vm-linux.sh` — executa o script, que instala Git, nano, Azure CLI e Docker dentro da VM criada no passo anterior
+```bash
+./tools-vm-linux.sh
+```
+
+### 4. Conectar na VM via SSH - usando IP público da VM
+
+```bash
+ssh admlnx@<ip-publico>
+```
+Senha: `<senha>`
+
+### 5. Instalar dependências dentro da VM
+
+`sudo yum install` — instala Git, nano e utilitários adicionais necessários para clonar os repositórios e editar arquivos dentro da VM
+```bash
+sudo yum install -y git nano yum-utils
+```
+
+### 6. Clonar os repositórios do projeto (dentro da VM)
+
+`git clone` do repositório Oracle — baixa o Dockerfile e os scripts de inicialização (DDL + dados) do banco
+```bash
+git clone https://github.com/lianalyumi/cp4-devops-banco.git
+```
+
+`git clone` do repositório Java — baixa o código-fonte da API Spring Boot e seu Dockerfile
+```bash
+git clone https://github.com/Eduardo-Locaspi/Clyvo-JavaAdvanced.git
+```
+
+`git clone` do repositório de DEVOPS baixa novamente os scripts de deploy, desta vez dentro da VM
+```bash
+git clone https://github.com/lianalyumi/cp4-devops.git
+```
+
+### 7. Build das imagens Docker (dentro da VM)
+
+`cd` — entra na pasta do repositório Oracle
+```bash
+cd cp4-devops-banco
+```
+
+`docker build` — constrói a imagem `rm565698-db` a partir do `Dockerfile.oracle`, empacotando o banco Oracle XE com os scripts de inicialização das tabelas
+```bash
+docker build -f Dockerfile.oracle -t rm565698-db .
+```
+
+`cd` — sai da pasta Oracle e entra na pasta do repositório Java
+```bash
+cd ../Clyvo-JavaAdvanced
+```
+
+`docker build` — constrói a imagem `rm565698-app` a partir do `Dockerfile.api`, compilando a aplicação Spring Boot em uma imagem enxuta rodando com usuário não-root
+```bash
+docker build -f Dockerfile.api -t rm565698-app .
+```
+
+### 8. Login no Azure e criação do Resource Group + ACR (dentro da VM)
+
+**8.1. Autenticar na conta Azure**
+`az login` — autentica a sessão da VM na sua conta Azure (abre um link/código para confirmar o login no navegador)
+```bash
+az login
+```
+
+**8.2. Confirmar a assinatura ativa**
+`az account show` — exibe a assinatura (subscription) atualmente ativa, para confirmar que é a correta antes de criar recursos
+```bash
+az account show
+```
+
+**8.3. Criar o Resource Group**
+`az group create` — cria o Resource Group `rg-cp4-rm565698`, que vai agrupar todos os recursos do projeto (ACR, Storage, Key Vault, containers) em `canadacentral`
+```bash
+az group create --name rg-cp4-rm565698 --location canadacentral
+```
+
+**8.4. Habilitar o serviço de Container Registry**
+`az provider register --namespace Microsoft.ContainerRegistry` — habilita o serviço de Container Registry na assinatura (necessário na primeira vez que se usa ACR nela)
+```bash
+az provider register --namespace Microsoft.ContainerRegistry
+```
+
+**8.5. Criar o Azure Container Registry (ACR)**
+`az acr create` — cria o registry (`cp4rm565698`), onde as imagens Docker (Oracle e API Java) serão armazenadas antes do deploy:
+- `--resource-group` — em qual Resource Group o ACR será criado
+- `--name` — nome único do registry (vira parte da URL, ex: `cp4rm565698.azurecr.io`)
+- `--sku Standard` — nível de serviço do registry (Standard oferece mais armazenamento e throughput que o Basic)
+- `--location` — região onde o ACR fica hospedado
+- `--public-network-enabled true` — permite acesso ao registry pela rede pública (necessário para o push/pull das imagens)
+- `--admin-enabled true` — habilita o usuário administrador do registry, usado para autenticação via usuário/senha nos próximos passos
+```bash
+ az acr create \
+    --resource-group rg-cp4-rm565698 \
+    --name cp4rm565698 \
+    --sku Standard \
+    --location canadacentral \
+    --public-network-enabled true \
+    --admin-enabled true
+```
+
+### 9. Login no ACR e push das imagens (dentro da VM)
+
+**9.1. Login no registry**
+`az acr login` — autentica o Docker local no registry `cp4rm565698`, usando as credenciais de administrador já habilitadas
+```bash
+az acr login --name cp4rm565698
+```
+
+**9.2. Enviar a imagem do Oracle**
+`docker tag` — renomeia a imagem local `rm565698-db` com o endereço completo do registry
+```bash
+docker tag rm565698-db cp4rm565698.azurecr.io/rm565698-db:v1
+```
+`docker push` — envia a imagem tageada para o ACR, ficando disponível para o deploy no ACI
+```bash
+docker push cp4rm565698.azurecr.io/rm565698-db:v1
+```
+
+**9.3. Enviar a imagem da API Java**
+`docker tag` — mesma lógica do passo anterior, agora para a imagem da API
+```bash
+docker tag rm565698-app cp4rm565698.azurecr.io/rm565698-app:v1
+```
+`docker push` — envia a imagem da API para o ACR
+```bash
+docker push cp4rm565698.azurecr.io/rm565698-app:v1
+```
+
+**9.4. Conferir as imagens no registry**
+`az acr repository list` — lista os repositórios (imagens) já enviados ao ACR, confirmando que o push das duas imagens funcionou
+```bash
+az acr repository list --name cp4rm565698 --output table
+```
+
+### 9.5. Limpeza das imagens locais (opcional)
+`docker rmi` — remove as imagens tageadas do armazenamento local da VM, liberando espaço em disco após garantir que o envio (*push*) para o ACR foi concluído com sucesso[cite: 13]
+```bash
+docker rmi cp4rm565698.azurecr.io/rm565698-db:v1
+docker rmi cp4rm565698.azurecr.io/rm565698-app:v1
+```
+
+### 10. Executar os scripts de deploy (dentro da VM)
+
+**10.1. Entrar na pasta e liberar execução dos scripts**
+`cd` — entra na pasta do repositório de scripts, já clonado dentro da VM no passo 6
+```bash
+cd ../cp4-devops
+```
+`chmod +x` — concede permissão de execução aos 4 scripts de deploy de uma vez só
+```bash
+chmod +x cp4-01store-account.sh cp4-02key-vault.sh cp4-03aci-oracle.sh cp4-04aci-api-java.sh
+```
+
+**10.2. Criar o volume persistente**
+`./cp4-01store-account.sh` — cria a Storage Account e o File Share que servirão como volume persistente do banco Oracle (ele garante que os dados persistam caso o container reinicie)
+```bash
+./cp4-01store-account.sh
+```
+
+**10.3. Criar o Key Vault e armazenar as credenciais**
+`./cp4-02key-vault.sh` — cria o Azure Key Vault e armazena nele as credenciais do banco e do ACR como secrets, para que nenhuma senha fique exposta no código
+```bash
+./cp4-02key-vault.sh
+```
+
+**10.4. Subir o container do banco Oracle**
+`./cp4-03aci-oracle.sh` — cria o container ACI do Oracle, puxando a imagem do ACR, montando o volume persistente e colocando as credenciais lidas do Key Vault
+```bash
+./cp4-03aci-oracle.sh
+```
+> O Oracle XE demora alguns minutos para inicializar após este comando.
+> Aguardar antes de testar a conexão com o banco, pois pode dar um erro 
+> "falso".
+
+**10.5. Subir o container da API Java**
+`./cp4-04aci-api-java.sh` — cria o container ACI da API, obtém automaticamente o endereço do container Oracle e coloca a string de conexão via variável de ambiente
+```bash
+./cp4-04aci-api-java.sh
+```
+
+### 11. Conferir os logs (dentro da VM)
+
+`az container logs` do Oracle — exibe a saída do container do banco, útil para confirmar que ele terminou de inicializar
+```bash
+az container logs --resource-group rg-cp4-rm565698 --name rm565698-db
+```
+
+`az container logs` da API — exibe a saída do container da API, confirmando que a aplicação Spring Boot subiu e conectou no banco
+```bash
+az container logs --resource-group rg-cp4-rm565698 --name rm565698-app
+```
+
+### 12. Obter o endereço da API (dentro da VM)
+
+`az container show` — consulta o FQDN (endereço público) do container da API, guardado na variável `fqdnJava` para uso nos testes de CRUD a seguir
+```bash
+fqdnApp=$(az container show --resource-group rg-cp4-rm565698 --name rm565698-app --query ipAddress.fqdn --output tsv)
+```
+
+### 13. TESTES DO CRUD
+
+### CRUD - ANIMAL
+### CREATE (POST) - Inserir um Animal
+
+`curl -X GET` — consulta (**Read**) todos os registros existentes de **ANIMAIS** .
+```bash
+curl -X GET http://$fqdnApp:8080/api/animais
+```
+
+`curl -X POST` — cria (**Create**) um novo registro de **ANIMAL** na tabela via endpoint da API
+```bash
+curl -X POST http://$fqdnApp:8080/api/animais \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nome": "Hércules",
+    "especie": "cachorro",
+    "raca": "Pitbull",
+    "peso": 28.5,
+    "dataNascimento": "2023-05-10",
+    "microchip": "13250",
+    "rg": "12442546",
+    "responsavel": {
+      "id": 1
+    }
+  }'
+```
+
+`curl -X GET` — consulta (**Read**) todos os registros existentes, confirmando a inclusão feita acima
+```bash
+curl -X GET http://$fqdnApp:8080/api/animais
+```
+
+`az container logs` - mostra os logs da API, confirmando as requisições batendo na nuvem
+```bash
+az container logs --resource-group rg-cp4-rm565698 --name rm565698-app --tail 15
+```
+
+Cada operação pode ser confirmada diretamente no banco via SELECT.
+
+`az container exec` — abre uma sessão `sqlplus` dentro do container Oracle, permitindo rodar `SELECT * FROM <tabela>;` para conferir cada operação (INSERT, UPDATE, DELETE) diretamente no banco
+```bash
+az container exec --resource-group rg-cp4-rm565698 --name rm565698-db \
+  --exec-command "sqlplus user-cp4rm565698/senha-cp4rm565698@//localhost/XEPDB1"
+```
+
+```bash
+SELECT * FROM T_CLYVO_ANIMAL;
+exit
+```
+
+### UPDATE (PUT) - Atualizar um Animal
+
+`curl -X GET` — consulta (**Read**) todos os registros existentes de **ANIMAIS**.
+```bash
+curl -X GET http://$fqdnApp:8080/api/animais
+```
+
+`curl -X PUT` — atualiza (**Update**) o registro criado, identificado pelo id `6` retornado no POST
+```bash
+curl -X PUT http://$fqdnApp:8080/api/animais/6 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nome": "Hércules Atualizado",
+    "especie": "cachorro",
+    "raca": "Pitbull",
+    "peso": 29.0,
+    "dataNascimento": "2023-05-10",
+    "microchip": "13250",
+    "rg": "12442546",
+    "responsavel": {
+      "id": 1
+    }
+  }'
+```
+
+`curl -X GET` — consulta (**Read**) todos os registros existentes, confirmando a atualização feita acima
+```bash
+curl -X GET http://$fqdnApp:8080/api/animais
+```
+
+`az container logs` - mostra os logs da API, confirmando as requisições batendo na nuvem
+```bash
+az container logs --resource-group rg-cp4-rm565698 --name rm565698-app --tail 15
+```
+
+Cada operação pode ser confirmada diretamente no banco via SELECT.
+
+`az container exec` — abre uma sessão `sqlplus` dentro do container Oracle, permitindo rodar `SELECT * FROM <tabela>;` para conferir cada operação (INSERT, UPDATE, DELETE) diretamente no banco
+```bash
+az container exec --resource-group rg-cp4-rm565698 --name rm565698-db \
+  --exec-command "sqlplus user-cp4rm565698/senha-cp4rm565698@//localhost/XEPDB1"
+```
+
+```bash
+SELECT id_animal, nm_animal, peso_animal FROM T_CLYVO_ANIMAL WHERE id_animal = 6;
+exit
+```
+
+### DELETE (DELETE) - Deletar um Animal
+
+`curl -X GET` — consulta (**Read**) todos os registros existentes de **ANIMAIS**.
+```bash
+curl -X GET http://$fqdnApp:8080/api/animais
+```
+
+`curl -X DELETE` — exclui (**Delete**) o registro, identificado pelo mesmo id `6`
+```bash
+curl -X DELETE http://$fqdnApp:8080/api/animais/6
+```
+
+
+`curl -X GET` — consulta (**Read**) todos os registros existentes, confirmando a atualização feita acima
+```bash
+curl -X GET http://$fqdnApp:8080/api/animais
+```
+
+`az container logs` - mostra os logs da API, confirmando as requisições batendo na nuvem
+```bash
+az container logs --resource-group rg-cp4-rm565698 --name rm565698-app --tail 15
+```
+
+Cada operação pode ser confirmada diretamente no banco via SELECT.
+
+`az container exec` — abre uma sessão `sqlplus` dentro do container Oracle, permitindo rodar `SELECT * FROM <tabela>;` para conferir cada operação (INSERT, UPDATE, DELETE) diretamente no banco
+```bash
+az container exec --resource-group rg-cp4-rm565698 --name rm565698-db \
+  --exec-command "sqlplus user-cp4rm565698/senha-cp4rm565698@//localhost/XEPDB1"
+```
+
+```bash
+SELECT * FROM T_CLYVO_ANIMAL;
+exit
+```
+
+### CRUD - RESPONSÁVEL
+### CREATE (POST) - Inserir um Responsável
+
+`curl -X GET` — consulta (**Read**) todos os registros existentes de **RESPONSÁVEIS**.
+```bash
+curl -X GET http://$fqdnApp:8080/api/responsaveis
+```
+
+`curl -X POST` — cria (**Create**) um novo registro de **RESPONSÁVEL** na tabela via endpoint da API
+```bash
+curl -X POST http://$fqdnApp:8080/api/responsaveis \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nome": "Roberto Carlos",
+    "cpf": "12345678901",
+    "telefone": "11988887777"
+  }'
+
+```
+
+`curl -X GET` — consulta (**Read**) todos os registros existentes, confirmando a inclusão feita acima
+```bash
+curl -X GET http://$fqdnApp:8080/api/responsaveis
+```
+
+`az container logs` - mostra os logs da API, confirmando as requisições batendo na nuvem
+```bash
+az container logs --resource-group rg-cp4-rm565698 --name rm565698-app --tail 15
+```
+
+Cada operação pode ser confirmada diretamente no banco via SELECT.
+
+`az container exec` — abre uma sessão `sqlplus` dentro do container Oracle, permitindo rodar `SELECT * FROM <tabela>;` para conferir cada operação (INSERT, UPDATE, DELETE) diretamente no banco
+```bash
+az container exec --resource-group rg-cp4-rm565698 --name rm565698-db \
+  --exec-command "sqlplus user-cp4rm565698/senha-cp4rm565698@//localhost/XEPDB1"
+```
+
+```bash
+SELECT * FROM T_CLYVO_RESPONSAVEL;
+exit
+```
+
+### UPDATE (PUT) - Atualizar um Responsável
+
+`curl -X GET` — consulta (**Read**) todos os registros existentes de **ANIMAIS**.
+```bash
+curl -X GET http://$fqdnApp:8080/api/responsaveis
+```
+
+`curl -X PUT` — atualiza (**Update**) o registro criado, identificado pelo id `4` retornado no POST
+```bash
+curl -X PUT http://$fqdnApp:8080/api/responsaveis/4 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nome": "Roberto Carlos da Silva",
+    "cpf": "12345678901",
+    "telefone": "11999998888"
+  }'
+```
+
+`curl -X GET` — consulta (**Read**) todos os registros existentes, confirmando a atualização feita acima
+```bash
+curl -X GET http://$fqdnApp:8080/api/responsaveis
+```
+
+`az container logs` - mostra os logs da API, confirmando as requisições batendo na nuvem
+```bash
+az container logs --resource-group rg-cp4-rm565698 --name rm565698-app --tail 15
+```
+
+Cada operação pode ser confirmada diretamente no banco via SELECT.
+
+`az container exec` — abre uma sessão `sqlplus` dentro do container Oracle, permitindo rodar `SELECT * FROM <tabela>;` para conferir cada operação (INSERT, UPDATE, DELETE) diretamente no banco
+```bash
+az container exec --resource-group rg-cp4-rm565698 --name rm565698-db \
+  --exec-command "sqlplus user-cp4rm565698/senha-cp4rm565698@//localhost/XEPDB1"
+```
+
+```bash
+SELECT id_responsavel, nm_responsavel, nr_telefone_responsavel FROM T_CLYVO_RESPONSAVEL WHERE id_responsavel = 4;
+exit
+```
+
+### DELETE (DELETE) - Excluir um Responsável
+
+`curl -X GET` — consulta (**Read**) todos os registros existentes de **RESPONSÁVEIS**.
+```bash
+curl -X GET http://$fqdnApp:8080/api/responsaveis
+```
+
+`curl -X DELETE` — exclui (**Delete**) o registro, identificado pelo mesmo id `4`
+```bash
+curl -X DELETE http://$fqdnApp:8080/api/responsaveis/4
+```
+
+
+`curl -X GET` — consulta (**Read**) todos os registros existentes, confirmando a atualização feita acima
+```bash
+curl -X GET http://$fqdnApp:8080/api/responsaveis
+```
+
+`az container logs` - mostra os logs da API, confirmando as requisições batendo na nuvem
+```bash
+az container logs --resource-group rg-cp4-rm565698 --name rm565698-app --tail 15
+```
+
+Cada operação pode ser confirmada diretamente no banco via SELECT.
+
+`az container exec` — abre uma sessão `sqlplus` dentro do container Oracle, permitindo rodar `SELECT * FROM <tabela>;` para conferir cada operação (INSERT, UPDATE, DELETE) diretamente no banco
+```bash
+az container exec --resource-group rg-cp4-rm565698 --name rm565698-db \
+  --exec-command "sqlplus user-cp4rm565698/senha-cp4rm565698@//localhost/XEPDB1"
+```
+
+```bash
+SELECT * FROM T_CLYVO_RESPONSAVEL;
+exit
+```
+
+
+## Segurança
+
+Todas as credenciais (usuário/senha do banco, usuário/senha do ACR) são
+armazenadas no **Azure Key Vault** e colocadas nos containers via
+variáveis de ambiente em tempo de execução, nenhuma credencial fica
+exposta no código-fonte ou nos scripts versionados no GitHub.
+
+## Equipe
+
+| RM | Nome | Turma |
+|---|---|---|
+| RM561713 | Eduardo Batista Locaspi | 2TDSPI |
+| RM565698 | Liana Lyumi Morisita Fujisima | 2TDSPI |
+| RM561833 | Victor Alves Lopes | 2TDSPI |
