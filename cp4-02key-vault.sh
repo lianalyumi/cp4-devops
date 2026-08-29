@@ -3,10 +3,11 @@
 rm=rm565698
 resourceGroup="rg-cp4-$rm"
 location="canadacentral"
-ORACLE_PASSWORD=senha-sys-cp4$rm
-APP_USER=user-cp4$rm
-APP_USER_PASSWORD=senha-cp4$rm
-SPRING_DATASOURCE_URL=jdbc:oracle:thin:@//$rm-db:1521/XEPDB1
+MYSQL_ROOT_PASSWORD=senha-root-cp4$rm
+MYSQL_DATABASE=cp4db
+MYSQL_USER=user-cp4$rm
+MYSQL_PASSWORD=senha-cp4$rm
+SPRING_DATASOURCE_URL=jdbc:mysql://$rm-db:3306/cp4db
 SPRING_DATASOURCE_USERNAME=user-cp4$rm
 SPRING_DATASOURCE_PASSWORD=senha-cp4$rm
 
@@ -34,9 +35,10 @@ az role assignment create \
 sleep 15
 
 # Armazenar os dados sensíveis
-az keyvault secret set --vault-name $keyVaultName --name oracle-password --value "$ORACLE_PASSWORD"
-az keyvault secret set --vault-name $keyVaultName --name app-user --value "$APP_USER"
-az keyvault secret set --vault-name $keyVaultName --name app-user-password --value "$APP_USER_PASSWORD"
+az keyvault secret set --vault-name $keyVaultName --name mysql-root-password --value "$MYSQL_ROOT_PASSWORD"
+az keyvault secret set --vault-name $keyVaultName --name mysql-database --value "$MYSQL_DATABASE"
+az keyvault secret set --vault-name $keyVaultName --name mysql-user --value "$MYSQL_USER"
+az keyvault secret set --vault-name $keyVaultName --name mysql-password --value "$MYSQL_PASSWORD"
 az keyvault secret set --vault-name $keyVaultName --name spring-datasource-url --value "$SPRING_DATASOURCE_URL"
 az keyvault secret set --vault-name $keyVaultName --name spring-datasource-username --value "$SPRING_DATASOURCE_USERNAME"
 az keyvault secret set --vault-name $keyVaultName --name spring-datasource-password --value "$SPRING_DATASOURCE_PASSWORD"

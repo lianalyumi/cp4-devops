@@ -1,0 +1,12 @@
+{
+  "nome": "Hércules",
+  "especie": "cachorro",
+  "raca": "Pitbull",
+  "peso": 28.5,
+  "dataNascimento": "2023-05-10",
+  "microchip": "13250",
+  "rg": "12442546",
+  "responsavel": {
+    "id": 1
+  }
+}

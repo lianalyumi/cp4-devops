@@ -15,26 +15,27 @@ keyVaultName="keyvault-cp4-$rm"
 # Registra o Serviço de ACI na Assinatura
 az provider register --namespace Microsoft.ContainerInstance
 
-# Deploy do Container Oracle (Banco de Dados)
+# Deploy do Container MySQL (Banco de Dados)
 az container create \
   --resource-group $resourceGroup \
   --name $aciName \
   --location $location \
   --image $acrName.azurecr.io/$imageName:$tag \
-  --cpu 2 \
-  --memory 4 \
+  --cpu 1 \
+  --memory 1 \
   --os-type Linux \
   --dns-name-label $rm-db \
-  --ports 1521 \
+  --ports 3306 \
   --registry-login-server $acrName.azurecr.io \
   --registry-username $(az keyvault secret show --vault-name $keyVaultName --name acr-username --query value -o tsv) \
   --registry-password $(az keyvault secret show --vault-name $keyVaultName --name acr-password --query value -o tsv) \
   --azure-file-volume-account-name $storageAccountName \
   --azure-file-volume-account-key $storage_key \
   --azure-file-volume-share-name $file_share_name \
-  --azure-file-volume-mount-path /opt/oracle/oradata \
+  --azure-file-volume-mount-path /var/lib/mysql \
   --environment-variables \
-    ORACLE_PASSWORD=$(az keyvault secret show --vault-name $keyVaultName --name oracle-password --query value -o tsv) \
-    APP_USER=$(az keyvault secret show --vault-name $keyVaultName --name app-user --query value -o tsv) \
-    APP_USER_PASSWORD=$(az keyvault secret show --vault-name $keyVaultName --name app-user-password --query value -o tsv) \
+    MYSQL_ROOT_PASSWORD=$(az keyvault secret show --vault-name $keyVaultName --name mysql-root-password --query value -o tsv) \
+    MYSQL_DATABASE=$(az keyvault secret show --vault-name $keyVaultName --name mysql-database --query value -o tsv) \
+    MYSQL_USER=$(az keyvault secret show --vault-name $keyVaultName --name mysql-user --query value -o tsv) \
+    MYSQL_PASSWORD=$(az keyvault secret show --vault-name $keyVaultName --name mysql-password --query value -o tsv) \
   --restart-policy Always
