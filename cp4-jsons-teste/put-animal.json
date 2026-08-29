@@ -1,11 +1,11 @@
 {
-  "nome": "Hércules Atualizado",
+  "nome": "Hércules da Silva",
   "especie": "cachorro",
-  "raca": "Pitbull",
-  "peso": 29.0,
-  "dataNascimento": "2023-05-10",
-  "microchip": "13250",
-  "rg": "12442546",
+  "raca": "Poodle",
+  "peso": 10.0,
+  "dataNascimento": "2020-03-08",
+  "microchip": "20563",
+  "rg": "89654123",
   "responsavel": {
     "id": 1
   }

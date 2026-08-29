@@ -1,8 +1,7 @@
 # Checkpoint 4: Containers em Nuvem (ACR/ACI)
 
-> Sistema de gestão veterinária centralizada para acompanhamento contínuo da 
-> saúde de animais, com API REST em Java Spring Boot e banco de dados MySQL,
-> containerizado na Azure.
+> Sistema de gestão veterinária centralizada para acompanhamento contínuo da saúde de animais,
+> com API REST em Java Spring Boot e banco de dados MySQL, containerizado na Azure.
 
 ---
 
@@ -48,6 +47,17 @@ Nesta entrega do Checkpoint 4, a aplicação API Java/Spring Boot e o banco de d
 ---
 
 ## Instalação (How-To)
+
+### Por que criar uma VM?
+
+O Azure Cloud Shell (usado no passo 1) não tem o Docker instalado — só tem o Azure CLI. Como o CRUD depende de **construir as imagens Docker**
+(passos 6 a 9), é preciso um ambiente com Docker disponível. Por isso, os passos 2 a 9 criam e usam uma VM temporária só para clonar os
+repositórios, montar (`docker build`) e enviar (`docker push`) as imagens ao ACR. Depois disso, a VM deixa de ser necessária (apagar no passo
+9.6) e os testes seguem direto pelo Cloud Shell.
+
+> **Caso já tenha o Docker e Azure CLI instalados na máquina (ou em outro ambiente próprio)?** Pode pular os passos 2 a 5 (criação e
+> configuração da VM) e ir direto para o **passo 6**, clonando os repositórios e rodando os `docker build`/`docker push` na própria
+> máquina. O restante do roteiro (passo 8 em diante) continua igual, seja rodando no Cloud Shell ou localmente.
 
 ### 1. Clonar o repositório de scripts (no Cloud Shell)
 
@@ -130,7 +140,7 @@ docker build -f Dockerfile.mysql -t rm565698-db .
 
 `cd` — sai da pasta do banco e entra na pasta do repositório Java
 ```bash
-cd ../Clyvo-JavaAdvanced
+cd ../cp4-devops-java
 ```
 
 `docker build` — constrói a imagem `rm565698-app` a partir do `Dockerfile.api`, compilando a aplicação Spring Boot em uma imagem enxuta rodando com usuário não-root
@@ -223,7 +233,21 @@ docker rmi cp4rm565698.azurecr.io/rm565698-db:v1
 docker rmi cp4rm565698.azurecr.io/rm565698-app:v1
 ```
 
-### 10. Executar os scripts de deploy (dentro da VM)
+### 9.6. A VM já pode ser apagada
+
+A partir deste ponto, a VM **não é mais necessária**. Ela serviu apenas para clonar os repositórios e construir/enviar as imagens Docker
+(passos 6 a 9) — algo que o Azure Cloud Shell não consegue fazer sozinho, por não ter o Docker instalado.
+
+Agora que as imagens já estão salvas no **ACR** (Azure Container Registry), os containers vão ser criados a partir delas diretamente
+pela Azure — sem depender da VM em nenhum momento. Por isso, os próximos passos (10 em diante) podem ser executados **direto no Azure
+Cloud Shell**, no mesmo lugar onde o passo 1 já clonou o repositório `cp4-devops`.
+
+`az group delete` — remove o Resource Group `rg-linux-free`, onde ficou a VM de trabalho, já que ela cumpriu sua função
+```bash
+az group delete --name rg-linux-free --yes --no-wait
+```
+
+### 10. Executar os scripts de deploy (no Cloud Shell)
 
 **10.1. Entrar na pasta e liberar execução dos scripts**
 `cd` — entra na pasta do repositório de scripts, já clonado dentro da VM no passo 6
@@ -252,9 +276,6 @@ chmod +x cp4-01store-account.sh cp4-02key-vault.sh cp4-03aci-mysql.sh cp4-04aci-
 ```bash
 ./cp4-03aci-mysql.sh
 ```
-> O MySQL inicializa rapidamente (poucos segundos), diferente de um banco
-> Oracle. Ainda assim, aguarde a confirmação nos logs (passo 11) antes de
-> testar a conexão.
 
 **10.5. Subir o container da API Java**
 `./cp4-04aci-api-java.sh` — cria o container ACI da API, obtém automaticamente o endereço do container do banco e coloca a string de conexão via variável de ambiente
@@ -314,6 +335,11 @@ curl -X POST http://$fqdnApp:8080/api/animal \
 curl -X GET http://$fqdnApp:8080/api/animal
 ```
 
+`curl -X GET` — consulta (**Read**) o registro `<id>`, confirmando a inclusão feita acima
+```bash
+curl -X GET http://$fqdnApp:8080/api/animal/<id>
+```
+
 `az container logs` - mostra os logs da API, confirmando as requisições batendo na nuvem
 ```bash
 az container logs --resource-group rg-cp4-rm565698 --name rm565698-app
@@ -328,7 +354,10 @@ az container exec --resource-group rg-cp4-rm565698 --name rm565698-db \
 ```
 
 ```sql
+SELECT id, nome, peso FROM animal WHERE id = <id>;
+
 SELECT * FROM animal;
+
 exit
 ```
 
@@ -339,18 +368,18 @@ exit
 curl -X GET http://$fqdnApp:8080/api/animal
 ```
 
-`curl -X PUT` — atualiza (**Update**) o registro criado, identificado pelo id `3` retornado no POST
+`curl -X PUT` — atualiza (**Update**) o registro criado, identificado pelo `<id>` retornado no POST
 ```bash
-curl -X PUT http://$fqdnApp:8080/api/animal/3 \
+curl -X PUT http://$fqdnApp:8080/api/animal/<id> \
   -H "Content-Type: application/json" \
   -d '{
-    "nome": "Hércules Atualizado",
+    "nome": "Hércules da Silva",
     "especie": "cachorro",
-    "raca": "Pitbull",
-    "peso": 29.0,
-    "dataNascimento": "2023-05-10",
-    "microchip": "13250",
-    "rg": "12442546",
+    "raca": "Poodle",
+    "peso": 10.0,
+    "dataNascimento": "2020-03-08",
+    "microchip": "20563",
+    "rg": "89654123",
     "responsavel": {
       "id": 1
     }
@@ -362,6 +391,11 @@ curl -X PUT http://$fqdnApp:8080/api/animal/3 \
 curl -X GET http://$fqdnApp:8080/api/animal
 ```
 
+`curl -X GET` — consulta (**Read**) o registro de `<id>`, confirmando a modificação feita acima
+```bash
+curl -X GET http://$fqdnApp:8080/api/animal/<id>
+```
+
 `az container logs` - mostra os logs da API, confirmando as requisições batendo na nuvem
 ```bash
 az container logs --resource-group rg-cp4-rm565698 --name rm565698-app
@@ -376,7 +410,10 @@ az container exec --resource-group rg-cp4-rm565698 --name rm565698-db \
 ```
 
 ```sql
-SELECT id, nome, peso FROM animal WHERE id = 3;
+SELECT id, nome, peso FROM animal WHERE id = <id>;
+
+SELECT * FROM animal;
+
 exit
 ```
 
@@ -387,14 +424,19 @@ exit
 curl -X GET http://$fqdnApp:8080/api/animal
 ```
 
-`curl -X DELETE` — exclui (**Delete**) o registro, identificado pelo mesmo id `3`
+`curl -X DELETE` — exclui (**Delete**) o registro, identificado pelo mesmo `<id>`
 ```bash
-curl -X DELETE http://$fqdnApp:8080/api/animal/3
+curl -X DELETE http://$fqdnApp:8080/api/animal/<id>
 ```
 
 `curl -X GET` — consulta (**Read**) todos os registros existentes, confirmando a exclusão feita acima
 ```bash
 curl -X GET http://$fqdnApp:8080/api/animal
+```
+
+`curl -X GET` — consulta (**Read**) o registro de `<id>`, confirmando a deleção feita acima
+```bash
+curl -X GET http://$fqdnApp:8080/api/animal/<id>
 ```
 
 `az container logs` - mostra os logs da API, confirmando as requisições batendo na nuvem
@@ -411,7 +453,10 @@ az container exec --resource-group rg-cp4-rm565698 --name rm565698-db \
 ```
 
 ```sql
+SELECT id, nome, peso FROM animal WHERE id = <id>;
+
 SELECT * FROM animal;
+
 exit
 ```
 
@@ -428,7 +473,7 @@ curl -X GET http://$fqdnApp:8080/api/responsavel
 curl -X POST http://$fqdnApp:8080/api/responsavel \
   -H "Content-Type: application/json" \
   -d '{
-    "nome": "Roberto Carlos",
+    "nome": "Roberto",
     "cpf": "12345678901",
     "telefone": "11988887777"
   }'
@@ -439,6 +484,11 @@ curl -X POST http://$fqdnApp:8080/api/responsavel \
 curl -X GET http://$fqdnApp:8080/api/responsavel
 ```
 
+`curl -X GET` — consulta (**Read**) o registro de `<id>`, confirmando a inclusão feita acima
+```bash
+curl -X GET http://$fqdnApp:8080/api/responsavel/<id>
+```
+
 `az container logs` - mostra os logs da API, confirmando as requisições batendo na nuvem
 ```bash
 az container logs --resource-group rg-cp4-rm565698 --name rm565698-app
@@ -453,7 +503,10 @@ az container exec --resource-group rg-cp4-rm565698 --name rm565698-db \
 ```
 
 ```sql
+SELECT id, nome, telefone FROM responsavel WHERE id = <id>;
+
 SELECT * FROM responsavel;
+
 exit
 ```
 
@@ -464,13 +517,13 @@ exit
 curl -X GET http://$fqdnApp:8080/api/responsavel
 ```
 
-`curl -X PUT` — atualiza (**Update**) o registro criado, identificado pelo id `3` retornado no POST
+`curl -X PUT` — atualiza (**Update**) o registro criado, identificado pelo `<id>` retornado no POST
 ```bash
-curl -X PUT http://$fqdnApp:8080/api/responsavel/3 \
+curl -X PUT http://$fqdnApp:8080/api/responsavel/<id> \
   -H "Content-Type: application/json" \
   -d '{
     "nome": "Roberto Carlos da Silva",
-    "cpf": "12345678901",
+    "cpf": "12587965478",
     "telefone": "11999998888"
   }'
 ```
@@ -478,6 +531,11 @@ curl -X PUT http://$fqdnApp:8080/api/responsavel/3 \
 `curl -X GET` — consulta (**Read**) todos os registros existentes, confirmando a atualização feita acima
 ```bash
 curl -X GET http://$fqdnApp:8080/api/responsavel
+```
+
+`curl -X GET` — consulta (**Read**) o registro de `<id>`, confirmando a modificação feita acima
+```bash
+curl -X GET http://$fqdnApp:8080/api/responsavel/<id>
 ```
 
 `az container logs` - mostra os logs da API, confirmando as requisições batendo na nuvem
@@ -494,7 +552,10 @@ az container exec --resource-group rg-cp4-rm565698 --name rm565698-db \
 ```
 
 ```sql
-SELECT id, nome, telefone FROM responsavel WHERE id = 3;
+SELECT id, nome, telefone FROM responsavel WHERE id = <id>;
+
+SELECT * FROM responsavel;
+
 exit
 ```
 
@@ -505,14 +566,19 @@ exit
 curl -X GET http://$fqdnApp:8080/api/responsavel
 ```
 
-`curl -X DELETE` — exclui (**Delete**) o registro, identificado pelo mesmo id `3`
+`curl -X DELETE` — exclui (**Delete**) o registro, identificado pelo mesmo `<id>`
 ```bash
-curl -X DELETE http://$fqdnApp:8080/api/responsavel/3
+curl -X DELETE http://$fqdnApp:8080/api/responsavel/<id>
 ```
 
 `curl -X GET` — consulta (**Read**) todos os registros existentes, confirmando a exclusão feita acima
 ```bash
 curl -X GET http://$fqdnApp:8080/api/responsavel
+```
+
+`curl -X GET` — consulta (**Read**) o registro de id 3, confirmando a deleção feita acima
+```bash
+curl -X GET http://$fqdnApp:8080/api/responsavel/3
 ```
 
 `az container logs` - mostra os logs da API, confirmando as requisições batendo na nuvem
@@ -529,8 +595,22 @@ az container exec --resource-group rg-cp4-rm565698 --name rm565698-db \
 ```
 
 ```sql
+SELECT id, nome, telefone FROM responsavel WHERE id = <id>;
+
 SELECT * FROM responsavel;
+
 exit
+```
+
+### 14. Limpeza final (depois de gravar o vídeo)
+
+`az group delete` — remove o Resource Group `rg-cp4-rm565698` inteiro (ACR, Key Vault, Storage, containers do banco e da API), evitando custos desnecessários após a gravação. O Resource Group `rg-linux-free` (VM) já foi removido antes, no passo 9.6.
+```bash
+az group delete --name rg-cp4-rm565698 --yes --no-wait
+```
+`rm -rf` — remove de maneira forçada `cp4-devops` e todos os arquivos contidos nela.
+```bash
+rm -rf cp4-devops
 ```
 
 ## Segurança
