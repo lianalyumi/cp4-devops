@@ -10,6 +10,7 @@ MYSQL_PASSWORD=senha-cp4$rm
 SPRING_DATASOURCE_URL=jdbc:mysql://$rm-db:3306/cp4db
 SPRING_DATASOURCE_USERNAME=user-cp4$rm
 SPRING_DATASOURCE_PASSWORD=senha-cp4$rm
+CONNECTIONSTRINGS='Server=mysql-dimdim;Port=3306;Database=db-dimdim;User=user-dimdim;Password=senha-dimdim;'
 
 acrName="cp4$rm"
 ACRUSERNAME=$(az acr credential show --name $acrName --resource-group $resourceGroup --query username --output tsv)
@@ -42,5 +43,6 @@ az keyvault secret set --vault-name $keyVaultName --name mysql-password --value 
 az keyvault secret set --vault-name $keyVaultName --name spring-datasource-url --value "$SPRING_DATASOURCE_URL"
 az keyvault secret set --vault-name $keyVaultName --name spring-datasource-username --value "$SPRING_DATASOURCE_USERNAME"
 az keyvault secret set --vault-name $keyVaultName --name spring-datasource-password --value "$SPRING_DATASOURCE_PASSWORD"
+az keyvault secret set --vault-name $keyVaultName --name connection-strings --value "$CONNECTIONSTRINGS"
 az keyvault secret set --vault-name $keyVaultName --name acr-username --value "$ACRUSERNAME"
 az keyvault secret set --vault-name $keyVaultName --name acr-password --value "$ACRPASSWORD"

@@ -1,7 +1,6 @@
 # Checkpoint 4: Containers em Nuvem (ACR/ACI)
 
-> Sistema de gestão veterinária centralizada para acompanhamento contínuo da saúde de animais,
-> com API REST em Java Spring Boot e banco de dados MySQL, containerizado na Azure.
+> Sistema de gestão veterinária centralizada para acompanhamento contínuo da saúde de animais, com API REST em Java Spring Boot e banco de dados MySQL, containerizado na Azure.
 
 ---
 
@@ -12,7 +11,7 @@
 - [Repositórios do Projeto](#repositórios-do-projeto)
 - [Pré-requisitos](#pré-requisitos)
 - [Instalação (How-To)](#instalação-how-to)
-- [Testando o CRUD](#testando-o-crud)
+- [Testes do CRUD](#13-testes-do-crud)
 - [Segurança](#segurança)
 - [Equipe](#equipe)
 
@@ -36,7 +35,7 @@ Nesta entrega do Checkpoint 4, a aplicação API Java/Spring Boot e o banco de d
 | Repositório | Conteúdo |
 |---|---|
 | [`cp4-devops-banco`](https://github.com/lianalyumi/cp4-devops-banco.git) | Dockerfile e scripts de inicialização do banco MySQL (DDL + dados) |
-| [`Clyvo-JavaAdvanced`](https://github.com/lianalyumi/cp4-devops-java.git) | Código-fonte da API Java/Spring Boot + Dockerfile |
+| [`cp4-devops-java`](https://github.com/lianalyumi/cp4-devops-java.git) | Código-fonte da API Java/Spring Boot + Dockerfile |
 | [`cp4-devops`](https://github.com/lianalyumi/cp4-devops.git) | Scripts de criação da VM e deploy dos recursos na Azure |
 
 ## Pré-requisitos
@@ -61,7 +60,7 @@ repositórios, montar (`docker build`) e enviar (`docker push`) as imagens ao AC
 
 ### 1. Clonar o repositório de scripts (no Cloud Shell)
 
-`git clone` — baixa o repositório `cp4-devops.git` para o Cloud Shell, trazendo `create-vm-linux.sh`, `tools-vm-linux.sh` e os 4 scripts de deploy (`01` a `04`)
+`git clone` — baixa o repositório `cp4-devops.git` para o Cloud Shell, trazendo `./cp4-create-vm-linux.sh`, `cp4-tools-vm-linux.sh` e os 4 scripts de deploy (`01` a `04`)
 ```bash
 git clone https://github.com/lianalyumi/cp4-devops.git
 ```
@@ -73,24 +72,24 @@ cd cp4-devops
 
 ### 2. Criar a VM de trabalho (no Cloud Shell)
 
-`chmod +x` — concede permissão de execução ao script `create-vm-linux.sh`
+`chmod +x` — concede permissão de execução ao script `cp4-create-vm-linux.sh`
 ```bash
 chmod +x cp4-create-vm-linux.sh
 ```
 
-`./create-vm-linux.sh` — executa o script, que cria o Resource Group, a VM Linux (AlmaLinux), a rede virtual, o IP público e as regras de firewall necessárias
+`./cp4-create-vm-linux.sh` — executa o script, que cria o Resource Group, a VM Linux (AlmaLinux), a rede virtual, o IP público e as regras de firewall necessárias
 ```bash
 ./cp4-create-vm-linux.sh
 ```
 
 ### 3. Instalar as ferramentas na VM (no Cloud Shell)
 
-`chmod +x` — concede permissão de execução ao script `tools-vm-linux.sh`
+`chmod +x` — concede permissão de execução ao script `cp4-tools-vm-linux.sh`
 ```bash
 chmod +x cp4-tools-vm-linux.sh
 ```
 
-`./tools-vm-linux.sh` — executa o script, que instala Git, nano, Azure CLI e Docker dentro da VM criada no passo anterior
+`./cp4-tools-vm-linux.sh` — executa o script, que instala Git, nano, Azure CLI e Docker dentro da VM criada no passo anterior
 ```bash
 ./cp4-tools-vm-linux.sh
 ```
@@ -148,6 +147,53 @@ cd ../cp4-devops-java
 docker build -f Dockerfile.api -t rm565698-app .
 ```
 
+**7.1. Testar as imagens localmente (antes do push)**
+
+Antes de enviar as imagens pro ACR, vale confirmar que elas funcionam
+juntas — evita gastar tempo subindo pra nuvem uma imagem quebrada.
+
+`docker network create` — cria uma rede Docker isolada só para esse
+teste, permitindo que os dois containers se enxerguem pelo nome
+```bash
+docker network create teste-local
+```
+
+`docker run` — sobe o container do banco localmente, na rede criada
+acima, com credenciais temporárias só para esse teste
+```bash
+docker run -d --name teste-db --network teste-local \
+  -e MYSQL_ROOT_PASSWORD=senha-teste \
+  -e MYSQL_DATABASE=cp4db \
+  -e MYSQL_USER=user-teste \
+  -e MYSQL_PASSWORD=senha-teste \
+  rm565698-db
+```
+
+`docker run` — sobe o container da API localmente, na mesma rede,
+apontando a `SPRING_DATASOURCE_URL` para o container do banco pelo nome
+(`teste-db`)
+```bash
+docker run -d --name teste-app --network teste-local -p 8080:8080 \
+  -e SPRING_DATASOURCE_URL=jdbc:mysql://teste-db:3306/cp4db \
+  -e SPRING_DATASOURCE_USERNAME=user-teste \
+  -e SPRING_DATASOURCE_PASSWORD=senha-teste \
+  rm565698-app
+```
+
+`curl` — testa se a API local está respondendo e conseguindo consultar
+o banco (confirma que as duas imagens funcionam juntas)
+```bash
+curl http://localhost:8080/api/animal
+```
+
+`docker rm` / `docker network rm` — encerra e remove os containers e a
+rede de teste, já que eles cumpriram sua função e não são usados no
+deploy real na Azure
+```bash
+docker rm -f teste-db teste-app
+docker network rm teste-local
+```
+
 ### 8. Login no Azure e criação do Resource Group + ACR (dentro da VM)
 
 **8.1. Autenticar na conta Azure**
@@ -195,7 +241,7 @@ az acr create \
 ### 9. Login no ACR e push das imagens (dentro da VM)
 
 **9.1. Login no registry**
-`az acr login` — autentica o Docker local no registry `cp4rm565698`, usando as credenciais de administrador já habilitadas
+`az acr login` — autentica o Docker local no Azure Container Registry cp4rm565698, permitindo realizar o push das imagens.
 ```bash
 az acr login --name cp4rm565698
 ```
@@ -226,6 +272,18 @@ docker push cp4rm565698.azurecr.io/rm565698-app:v1
 az acr repository list --name cp4rm565698 --output table
 ```
 
+`az acr repository show-tags` — Eles permitem verificar que a versão v1 das imagens do banco e da API está registrada no ACR.
+```bash
+az acr repository show-tags \
+  --name cp4rm565698 \
+  --repository rm565698-db
+```
+```bash
+az acr repository show-tags \
+  --name cp4rm565698 \
+  --repository rm565698-app
+```
+
 ### 9.5. Limpeza das imagens locais (opcional)
 `docker rmi` — remove as imagens tageadas do armazenamento local da VM, liberando espaço em disco após garantir que o envio (*push*) para o ACR foi concluído com sucesso
 ```bash
@@ -249,10 +307,14 @@ az group delete --name rg-linux-free --yes --no-wait
 
 ### 10. Executar os scripts de deploy (no Cloud Shell)
 
+A partir deste ponto, os comandos voltam a ser executados diretamente no Azure Cloud Shell.
+
+O repositório cp4-devops já foi clonado no Cloud Shell no passo 1.
+
 **10.1. Entrar na pasta e liberar execução dos scripts**
-`cd` — entra na pasta do repositório de scripts, já clonado dentro da VM no passo 6
+`cd` — entra na pasta do repositório de scripts
 ```bash
-cd ../cp4-devops
+cd cp4-devops
 ```
 `chmod +x` — concede permissão de execução aos 4 scripts de deploy de uma vez só
 ```bash
@@ -283,8 +345,55 @@ chmod +x cp4-01store-account.sh cp4-02key-vault.sh cp4-03aci-mysql.sh cp4-04aci-
 ./cp4-04aci-api-java.sh
 ```
 
-### 11. Conferir os logs (dentro da VM)
+**10.6. Verifica execução da aplicação sem privilégios administrativos**
+`az container exec` - executa o comando `whoami` dentro do container da aplicação para verificar qual usuário está executando o processo.
 
+```bash
+az container exec \
+  --resource-group rg-cp4-rm565698 \
+  --name rm565698-app \
+  --exec-command "whoami"
+```
+
+**10.7. Recursos criados na Azure**
+`az resource list` - visualiza os recursos do Resource Group.
+```bash
+az resource list \
+  --resource-group rg-cp4-rm565698 \
+  --output table
+```
+
+`az container list` - visualiza containers criados.
+```bash
+az container list \
+  --resource-group rg-cp4-rm565698 \
+  --output table
+```
+
+`az storage account list` - visualiza Storage Account.
+```bash
+az storage account list \
+  --resource-group rg-cp4-rm565698 \
+  --output table
+```
+
+`az keyvault list` - visualiza o Key Vault.
+```bash
+az keyvault list \
+  --resource-group rg-cp4-rm565698 \
+  --output table
+```
+
+`az acr show` — exibe os detalhes do Azure Container Registry criado para o projeto.
+```bash
+az acr show \
+  --name cp4rm565698 \
+  --resource-group rg-cp4-rm565698 \
+  --output table
+```
+
+
+### 11. Conferir os logs (no Cloud Shell)
 `az container logs` do MySQL — exibe a saída do container do banco, útil para confirmar que ele terminou de inicializar
 ```bash
 az container logs --resource-group rg-cp4-rm565698 --name rm565698-db
@@ -295,9 +404,9 @@ az container logs --resource-group rg-cp4-rm565698 --name rm565698-db
 az container logs --resource-group rg-cp4-rm565698 --name rm565698-app
 ```
 
-### 12. Obter o endereço da API (dentro da VM)
+### 12. Obter o endereço da API (no Cloud Shell)
 
-`az container show` — consulta o FQDN (endereço público) do container da API, guardado na variável `fqdnApp` para uso nos testes de CRUD a seguir
+`az container show` — consulta o FQDN (endereço público) do container da API, guardando na variável `fqdnApp` para uso nos testes de CRUD a seguir
 ```bash
 fqdnApp=$(az container show --resource-group rg-cp4-rm565698 --name rm565698-app --query ipAddress.fqdn --output tsv)
 ```
@@ -576,9 +685,9 @@ curl -X DELETE http://$fqdnApp:8080/api/responsavel/<id>
 curl -X GET http://$fqdnApp:8080/api/responsavel
 ```
 
-`curl -X GET` — consulta (**Read**) o registro de id 3, confirmando a deleção feita acima
+`curl -X GET` — consulta (**Read**) o registro de `<id>`, confirmando a deleção feita acima
 ```bash
-curl -X GET http://$fqdnApp:8080/api/responsavel/3
+curl -X GET http://$fqdnApp:8080/api/responsavel/<id>
 ```
 
 `az container logs` - mostra os logs da API, confirmando as requisições batendo na nuvem
