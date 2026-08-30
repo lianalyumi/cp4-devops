@@ -30,6 +30,8 @@ Nesta entrega do Checkpoint 4, a aplicação API Java/Spring Boot e o banco de d
 - **Armazenamento persistente:** Azure Files (montado no container do banco)
 - **Segurança:** Credenciais armazenadas no Azure Key Vault (nenhuma senha exposta no código-fonte)
 
+![Imagem da Arquitetura](arquitetura/imagem.png)
+
 ## Repositórios do Projeto
 
 | Repositório | Conteúdo |
@@ -147,51 +149,11 @@ cd ../cp4-devops-java
 docker build -f Dockerfile.api -t rm565698-app .
 ```
 
-**7.1. Testar as imagens localmente (antes do push)**
+**7.1. Confirmar que as imagens foram criadas**
 
-Antes de enviar as imagens pro ACR, vale confirmar que elas funcionam
-juntas — evita gastar tempo subindo pra nuvem uma imagem quebrada.
-
-`docker network create` — cria uma rede Docker isolada só para esse
-teste, permitindo que os dois containers se enxerguem pelo nome
+`docker image ls` — lista as imagens Docker disponíveis localmente na VM, confirmando visualmente que as duas imagens (`rm565698-db` e `rm565698-app`) foram criadas com sucesso antes de seguir para o ACR
 ```bash
-docker network create teste-local
-```
-
-`docker run` — sobe o container do banco localmente, na rede criada
-acima, com credenciais temporárias só para esse teste
-```bash
-docker run -d --name teste-db --network teste-local \
-  -e MYSQL_ROOT_PASSWORD=senha-teste \
-  -e MYSQL_DATABASE=cp4db \
-  -e MYSQL_USER=user-teste \
-  -e MYSQL_PASSWORD=senha-teste \
-  rm565698-db
-```
-
-`docker run` — sobe o container da API localmente, na mesma rede,
-apontando a `SPRING_DATASOURCE_URL` para o container do banco pelo nome
-(`teste-db`)
-```bash
-docker run -d --name teste-app --network teste-local -p 8080:8080 \
-  -e SPRING_DATASOURCE_URL=jdbc:mysql://teste-db:3306/cp4db \
-  -e SPRING_DATASOURCE_USERNAME=user-teste \
-  -e SPRING_DATASOURCE_PASSWORD=senha-teste \
-  rm565698-app
-```
-
-`curl` — testa se a API local está respondendo e conseguindo consultar
-o banco (confirma que as duas imagens funcionam juntas)
-```bash
-curl http://localhost:8080/api/animal
-```
-
-`docker rm` / `docker network rm` — encerra e remove os containers e a
-rede de teste, já que eles cumpriram sua função e não são usados no
-deploy real na Azure
-```bash
-docker rm -f teste-db teste-app
-docker network rm teste-local
+docker image ls
 ```
 
 ### 8. Login no Azure e criação do Resource Group + ACR (dentro da VM)
